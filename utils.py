@@ -26,7 +26,7 @@ def preProcess(sents):
         sent1=[]
         sent2=[]
         for t in sent:
-            if not t[0].endswith('-') and not t[0]=='SILENCE' and not t[0]=='TRACE' and not t[1]==None:
+            if not t[0].endswith('-') and not t[0]=='SILENCE' and not t[0]=='TRACE' and not t[1]=='None':
                 sent1.append(t)
         for (i,t) in enumerate(sent1):
             if t[2]=='+':
