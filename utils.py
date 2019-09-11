@@ -105,8 +105,11 @@ def idData(sents,vocDic,tagDic):
     allSents=[]
     allTags=[]
     for sent in sents:
+        if len(sent)<=0:
+            print(sent)
+            continue
         allSents.append([get_idx(token[0],vocDic) for token in sent])
-        allTags.append([tagDic(token[2]) for token in sent])
+        allTags.append([tagDic[token[2]] for token in sent])
     return [allSents,allTags]
 
 def padding(batch,pad=0):
@@ -118,22 +121,27 @@ def padding(batch,pad=0):
             sent+=[pad]*(maxLen-len(sent))
     return [torch.tensor(batch,dtype=torch.long, device=device),torch.tensor(lengths,dtype=torch.long, device=device),ntokens]
 
-def batchIter(data,batch_size,train=True):
+def batchIter(data,batch_size,tag_pad=0,train=True):
     allSents=data[0]
     allTags=data[1]
-    nbatch=len(allSents)/batch_size
+    nbatch=len(allSents)//batch_size
     for i in range(nbatch):
-        yield padding(allSents[i*batch_size:(i+1)*batch_size]), padding(allTags[i*batch_size:(i+1)*batch_size])
+        yield padding(allSents[i*batch_size:(i+1)*batch_size]), padding(allTags[i*batch_size:(i+1)*batch_size],pad=tag_pad)
     if len(allSents)>nbatch*batch_size:
-        yield allSents[nbatch * batch_size:], allTags[nbatch * batch_size:]
+        yield padding(allSents[nbatch * batch_size:]), padding(allTags[nbatch * batch_size:],pad=tag_pad)
 
-trainSents=preProcess(readData('train'))
+def isEdit(id,id2label):
+    if not id2label[id]=='O' and not id2label[id]=='OR':
+        return True
+    else:
+        return False
+'''trainSents=preProcess(readData('train'))
 valSents=preProcess(readData('val'))
 testSents=preProcess(readData('test'))
 writeSents(trainSents,'train.txt')
 writeSents(valSents,'val.txt')
 writeSents(testSents,'test.txt')
-print(stat(trainSents),len(trainSents))
+print(stat(trainSents),len(trainSents))'''
 
 
 
