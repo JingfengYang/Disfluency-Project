@@ -33,8 +33,12 @@ def preProcess(sents):
         for t in sent:
             if not t[0].endswith('-') and not t[0]=='SILENCE' and not t[0]=='TRACE' and not t[1]=='None':
                 sent1.append(t)
+        if len(sent1)<=0:
+            continue
+        tag = 0
         for (i,t) in enumerate(sent1):
             if t[2]=='+':
+                tag = 1
                 if i==0 or not sent1[i-1][2]=='+':
                     if i==len(sent1)-1 or not sent1[i+1][2]=='+':
                         sent2.append([t[0], t[1], 'BE_IP'])
@@ -49,7 +53,8 @@ def preProcess(sents):
             else:
                 assert(t[2]=='None')
                 sent2.append([t[0], t[1], 'O'])
-        newSents.append(sent2)
+        if tag==1:
+            newSents.append(sent2)
     return newSents
 
 def stat(sents):
@@ -142,7 +147,3 @@ writeSents(trainSents,'train.txt')
 writeSents(valSents,'val.txt')
 writeSents(testSents,'test.txt')
 print(stat(trainSents),len(trainSents))'''
-
-
-
-
