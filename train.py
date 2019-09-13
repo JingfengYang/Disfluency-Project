@@ -10,12 +10,11 @@ INPUT_DIM = 100
 HIDDEN_DIM = 256
 PRINT_EVERY=100
 EVALUATE_EVERY_EPOCH=1
-LEARNING_RATE=0.0
 ENCODER_LAYER=2
 DROUPOUT_RATE=0.1
 BATCH_SIZE=32
-INIT_LEARNING_RATE=0.0001
-EPOCH=200
+INIT_LEARNING_RATE=0.0
+EPOCH=400
 
 use_cuda = torch.cuda.is_available()
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -198,12 +197,12 @@ def run(epoch,model,batch_size,trainData,valData,testData,id2label):
                   SimpleLossCompute( criterion, model_opt),train=True)
         model.eval()
         print('Evaluation_val: epoch: %d' % (i))
-        loss,f=run_epoch(batchIter(testData, batch_size, tag_pad=len(id2label)), model,
+        loss,f=run_epoch(batchIter(valData, batch_size, tag_pad=len(id2label)), model,
                   SimpleLossCompute(criterion, model_opt), train=False, id2label=id2label)
         print('Loss:', loss)
         valResult.append(f)
         print('Evaluation_test: epoch: %d' % (i))
-        loss,f=run_epoch(batchIter(valData, batch_size, tag_pad=len(id2label)), model,
+        loss,f=run_epoch(batchIter(testData, batch_size, tag_pad=len(id2label)), model,
                                            SimpleLossCompute(criterion, model_opt), train=False, id2label=id2label)
         print('Loss:', loss)
         testResult.append(f)
