@@ -1,4 +1,5 @@
-from utils import readData,preProcess,build_vocab,batchIter,idData,isEdit
+from utils import build_vocab,batchIter,idData,isEdit
+from preprocessPTB import readData,preProcess
 import torch
 import torch.nn as nn
 import time
@@ -8,7 +9,7 @@ import torch.nn.functional as F
 WORD_EMBEDDING_DIM = 64
 INPUT_DIM = 100
 HIDDEN_DIM = 256
-PRINT_EVERY=100
+PRINT_EVERY=1000
 EVALUATE_EVERY_EPOCH=1
 ENCODER_LAYER=2
 DROUPOUT_RATE=0.1
@@ -212,9 +213,9 @@ def run(epoch,model,batch_size,trainData,valData,testData,id2label):
     print('TestBest epoch:', [i for i, j in enumerate(testResult) if j == testBest])
 
 
-trainSents=preProcess(readData('train'))
-valSents=preProcess(readData('val'))
-testSents=preProcess(readData('test'))
+trainSents=preProcess(readData('dps/swbd/train'))
+valSents=preProcess(readData('dps/swbd/val'))
+testSents=preProcess(readData('dps/swbd/test'))
 vocDic,label2id,id2label=build_vocab(trainSents)
 print(id2label)
 encoder=Encoder(len(vocDic),WORD_EMBEDDING_DIM,INPUT_DIM,HIDDEN_DIM,ENCODER_LAYER,len(id2label),DROUPOUT_RATE).to(device)
