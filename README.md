@@ -1,5 +1,7 @@
 # Disfluency Project
-NXT Switchboard xml parsing script
+NXT Switchboard xml preprocessing
+PTB III swbd DPS preprocessing
+LSTM model (with warm-up trick) for disfluency detection
 
 ----------------------------------
 Requirement:
@@ -8,7 +10,7 @@ pytorch 1.0+
 
 
 ----------------------------------
-Description:
+## Description:
 
 file_list.txt is a list of file indices.
 
@@ -36,14 +38,21 @@ train.py
 This is the main file to train vanilla BiLSTM model, test on development and test set.
 
 ----------------------------------
-How to run:
+### How to run:
 
-First, put the dps/swbd/2 dps/swbd/3 dps/swbd/4 folder in PTB III to the folder dps/swbd/ directory.
+First, 
+
+put the dps/swbd/2 dps/swbd/3 dps/swbd/4 folder in PTB III to the folder dps/swbd/ directory.
 
 Second, 
+
 cd dps/swbd
+
 run ./mv.sh
 
-Finally, cd main directory
+Finally, 
+
+cd main directory
+
 run python train.py
 
