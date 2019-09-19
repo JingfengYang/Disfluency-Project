@@ -33,7 +33,8 @@ from allennlp.nn.util import get_text_field_mask, \
     sequence_cross_entropy_with_logits, masked_log_softmax
 from allennlp.nn.activations import Activation
 from allennlp.training.learning_rate_schedulers.noam import NoamLR
-from allennlp.training.metrics import CategoricalAccuracy
+from allennlp.training.metrics import CategoricalAccuracy, FBetaMeasure
+from metric import CustomFBetaMeasure
 
 from allennlp.data.iterators import BucketIterator
 
@@ -119,7 +120,17 @@ class BiLSTMTagger(Model):
         self.intermediate2tag = nn.Linear(
             in_features=int(encoder.get_output_dim() / 2),
             out_features=vocab.get_vocab_size('labels'))
-        self.accuracy = CategoricalAccuracy()
+
+        # self.accuracy = CategoricalAccuracy()
+
+        label_vocab = vocab.get_token_to_index_vocabulary('labels').copy()
+        print("label_vocab: ", label_vocab)
+        [label_vocab.pop(x) for x in ['O', 'OR']]
+        labels_for_metric = list(label_vocab.values())
+        print("labels_for_metric: ", labels_for_metric)
+        self.accuracy = CustomFBetaMeasure(beta=1.0,
+                                           average='micro',
+                                           labels=labels_for_metric)
 
     def forward(self,
                 sentence: Dict[str, torch.Tensor],
@@ -139,7 +150,11 @@ class BiLSTMTagger(Model):
         return output
 
     def get_metrics(self, reset: bool = False) -> Dict[str, float]:
-        return {"accuracy": self.accuracy.get_metric(reset)}
+        # return {"accuracy": self.accuracy.get_metric(reset)}
+        metric = self.accuracy.get_metric(reset)
+        return {"precision": metric['precision'],
+                "recall": metric['recall'],
+                "fscore": metric['fscore']}
 
 
 if __name__ == '__main__':
