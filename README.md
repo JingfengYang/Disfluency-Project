@@ -1,5 +1,9 @@
 # Disfluency Project
-NXT Switchboard xml parsing script
+NXT Switchboard xml preprocessing
+
+PTB III swbd DPS preprocessing
+
+LSTM model (with warm-up trick) for disfluency detection
 
 ----------------------------------
 Requirement:
@@ -8,7 +12,7 @@ pytorch 1.0+
 
 
 ----------------------------------
-Description:
+## Description:
 
 file_list.txt is a list of file indices.
 
@@ -27,29 +31,30 @@ of the dialogue(e.g. sw2012)
 parse_all.py This is the main script to retrieve plain text information from corresponding folders One dialogue per running. This script will take in one argument, which is the unique index of the dialogue file (e.g. sw2005)
 
 utils.py
-This is to read the data and finish the preprocessing (delete punctuations, partial words, 'SILENCE' and 'TRACE' ), transforms the labels to BE IE IP BE_IP O OR, and include functions used in train.py
+Include functions used in train.py
+
+preprocessPTB.py
+This is to read the data and finish the preprocessing (delete punctuations, partial words), transforms the labels to BE IE IP BE_IP O OR.
 
 train.py
 This is the main file to train vanilla BiLSTM model, test on development and test set.
 
 ----------------------------------
-How to run:
+### How to run:
 
-First, put the file_list.txt parse_all.py and parse_all.sh into
-.../xml/ directory
+First, 
+
+put the dps/swbd/2 dps/swbd/3 dps/swbd/4 folder in PTB III to the folder dps/swbd/ directory.
 
 Second, 
-mkdir /result 
-in the .../xml/ directory
 
-Third, run
+cd dps/swbd
 
-./parsing_all.sh file_list.txt
+run ./mv.sh
 
-here file_list will guide paring_all to create corresponding 
-result files.
+Finally, 
 
-Finally, run
+cd main directory
 
-python train.py
+run python train.py
 
