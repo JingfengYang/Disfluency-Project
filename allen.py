@@ -3,6 +3,7 @@ from typing import Iterator, List, Dict
 import torch
 import torch.nn as nn
 import torch.optim as optim
+import torch.nn.functional as F
 import numpy as np
 
 from allennlp.data import Instance
@@ -28,7 +29,7 @@ from allennlp.modules.seq2seq_encoders import Seq2SeqEncoder, \
 from allennlp.nn.util import get_text_field_mask, \
     sequence_cross_entropy_with_logits, masked_log_softmax
 from allennlp.nn.activations import Activation
-
+from allennlp.training.learning_rate_schedulers.noam import NoamLR
 from allennlp.training.metrics import CategoricalAccuracy
 
 from allennlp.data.iterators import BucketIterator
@@ -103,11 +104,6 @@ class BiLSTMTagger(Model):
             activations=Activation.by_name('relu')(),
             dropout=dropout_p)
 
-        # self.embedding2input = nn.Linear(
-        #     in_features=word_embeddings.get_output_dim(),
-        #     out_features=encoder.get_input_dim())
-        # self.relu1 = nn.ReLU()
-
         self.encoder = encoder
 
         self.hidden2intermediate = FeedForward(
@@ -117,18 +113,10 @@ class BiLSTMTagger(Model):
             activations=Activation.by_name('relu')(),
             dropout=dropout_p)
 
-        # self.hidden2intermediate = nn.Linear(
-        #     in_features=encoder.get_output_dim(),
-        #     out_features=int(encoder.get_output_dim() / 2))
-        # self.relu2 = nn.ReLU()
-
         self.intermediate2tag = nn.Linear(
             in_features=int(encoder.get_output_dim() / 2),
             out_features=vocab.get_vocab_size('labels'))
         self.accuracy = CategoricalAccuracy()
-
-        # self.dropout1 = nn.Dropout(dropout_p)
-        # self.dropout2 = nn.Dropout(dropout_p)
 
     def forward(self,
                 sentence: Dict[str, torch.Tensor],
@@ -139,8 +127,8 @@ class BiLSTMTagger(Model):
         encoder_out = self.encoder(encoder_in, mask)
         intermediate = self.hidden2intermediate(encoder_out)
         tag_logits = self.intermediate2tag(intermediate)
-        # probs = masked_log_softmax(result, mask)
-        output = {"tag_logits": tag_logits}
+        probs = F.softmax(tag_logits, dim=-1)
+        output = {"tag_logits": tag_logits, 'probs': probs}
         if labels is not None:
             self.accuracy(tag_logits, labels, mask)
             output["loss"] = sequence_cross_entropy_with_logits(
@@ -190,7 +178,15 @@ if __name__ == '__main__':
     else:
         cuda_device = -1
 
-    optimizer = optim.SGD(model.parameters(), lr=0.1)
+    # optimizer = optim.SGD(model.parameters(), lr=0.1)
+
+    optimizer = optim.Adam(model.parameters(), lr=INIT_LEARNING_RATE,
+                           betas=(0.9, 0.98), eps=1e-9)
+    scheduler = NoamLR(
+        optimizer=optimizer,
+        model_size=HIDDEN_DIM,
+        warmup_steps=400,
+        factor=1)
 
     iterator = BucketIterator(batch_size=BATCH_SIZE, sorting_keys=[
                               ("sentence", "num_tokens")])
@@ -199,6 +195,7 @@ if __name__ == '__main__':
 
     trainer = Trainer(model=model,
                       optimizer=optimizer,
+                      learning_rate_scheduler=scheduler,
                       iterator=iterator,
                       train_dataset=train_dataset,
                       validation_dataset=validation_dataset,
