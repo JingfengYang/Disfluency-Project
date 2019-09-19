@@ -1,0 +1,9 @@
+__pycache__/
+dps/swbd/4
+dps/swbd/train
+dps/swbd/test
+dps/swbd/val
+train.txt
+test.txt
+val.txt
+dps/readme.dps
