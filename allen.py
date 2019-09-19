@@ -14,6 +14,7 @@ from allennlp.data.dataset_readers import DatasetReader
 from allennlp.common.file_utils import cached_path
 
 from allennlp.data.token_indexers import TokenIndexer, SingleIdTokenIndexer
+from allennlp.data.token_indexers import PretrainedBertIndexer
 from allennlp.data.tokenizers import Token
 
 from allennlp.data.vocabulary import Vocabulary
@@ -22,6 +23,8 @@ from allennlp.models import Model
 
 from allennlp.modules.text_field_embedders import TextFieldEmbedder, \
     BasicTextFieldEmbedder
+from allennlp.modules.token_embedders.bert_token_embedder \
+    import PretrainedBertEmbedder
 from allennlp.modules.token_embedders import Embedding
 from allennlp.modules import FeedForward
 from allennlp.modules.seq2seq_encoders import Seq2SeqEncoder, \
@@ -151,7 +154,12 @@ if __name__ == '__main__':
     INIT_LEARNING_RATE = 0.0
     EPOCH = 400
 
-    reader = DisfluencyDatasetReader()
+    token_indexer = PretrainedBertIndexer(
+        pretrained_model="bert-base-uncased",
+        do_lowercase=True
+    )
+    reader = DisfluencyDatasetReader(
+        token_indexers={"tokens": token_indexer})
 
     train_dataset = reader.read('train.txt')
     validation_dataset = reader.read('val.txt')
@@ -162,7 +170,13 @@ if __name__ == '__main__':
 
     token_embedding = Embedding(num_embeddings=vocab.get_vocab_size('tokens'),
                                 embedding_dim=WORD_EMBEDDING_DIM)
-    word_embeddings = BasicTextFieldEmbedder({"tokens": token_embedding})
+    bert_embedder = PretrainedBertEmbedder(
+        pretrained_model="bert-base-uncased",
+        requires_grad=False,
+        top_layer_only=True
+    )
+    word_embeddings = BasicTextFieldEmbedder({"tokens": bert_embedder},
+                                             allow_unmatched_keys=True)
 
     lstm = PytorchSeq2SeqWrapper(nn.LSTM(
         INPUT_DIM, HIDDEN_DIM,
