@@ -1,7 +1,6 @@
 import torch
 import torch.nn as nn
 import torch.optim as optim
-import numpy as np
 
 from allennlp.data.token_indexers import PretrainedBertIndexer
 
@@ -14,14 +13,13 @@ from allennlp.modules.token_embedders import Embedding
 from allennlp.modules.seq2seq_encoders import PytorchSeq2SeqWrapper
 from allennlp.training.learning_rate_schedulers.noam import NoamLR
 
-from allennlp.data.iterators import BucketIterator
+from allennlp.data.iterators import BucketIterator, BasicIterator
 
 from allennlp.training.trainer import Trainer
 
-from allennlp.predictors import SentenceTaggerPredictor
-
 from BiLSTMTagger import BiLSTMTagger
 from DisfluencyDatasetReader import DisfluencyDatasetReader
+from DisfluencyPredictor import DisfluencyPredictor
 
 
 if __name__ == '__main__':
@@ -34,7 +32,8 @@ if __name__ == '__main__':
     DROPOUT_RATE = 0.1
     BATCH_SIZE = 32
     INIT_LEARNING_RATE = 0.0
-    EPOCH = 400
+    EPOCH = 1
+    PATIENCE = 10
 
     torch.manual_seed(1)
 
@@ -45,7 +44,7 @@ if __name__ == '__main__':
     reader = DisfluencyDatasetReader(
         token_indexers={"tokens": token_indexer})
 
-    train_dataset = reader.read('../train.txt')
+    train_dataset = reader.read('../mini_train.txt')
     validation_dataset = reader.read('../val.txt')
     test_dataset = reader.read('../test.txt')
 
@@ -97,37 +96,38 @@ if __name__ == '__main__':
                       iterator=iterator,
                       train_dataset=train_dataset,
                       validation_dataset=validation_dataset,
-                      patience=10,
-                      num_epochs=1000,
+                      patience=PATIENCE,
+                      num_epochs=EPOCH,
                       cuda_device=cuda_device)
 
     trainer.train()
 
-    predictor = SentenceTaggerPredictor(model, dataset_reader=reader)
-
-    tag_logits = predictor.predict("The dog ate the apple")['tag_logits']
-
-    tag_ids = np.argmax(tag_logits, axis=-1)
-
-    print([model.vocab.get_token_from_index(i, 'labels') for i in tag_ids])
+    # predictor = SentenceTaggerPredictor(model, dataset_reader=reader)
+    # tag_logits = predictor.predict("The dog ate the apple")['tag_logits']
+    # tag_ids = np.argmax(tag_logits, axis=-1)
+    # print([model.vocab.get_token_from_index(i, 'labels') for i in tag_ids])
 
     # Here's how to save the model.
-    with open("/tmp/model.th", 'wb') as f:
-        torch.save(model.state_dict(), f)
+    # with open("/tmp/model.th", 'wb') as f:
+    #     torch.save(model.state_dict(), f)
+    # vocab.save_to_files("/tmp/vocabulary")
 
-    vocab.save_to_files("/tmp/vocabulary")
+    # # And here's how to reload the model.
+    # vocab2 = Vocabulary.from_files("/tmp/vocabulary")
+    # model2 = BiLSTMTagger(word_embeddings, lstm, vocab2)
+    # with open("/tmp/model.th", 'rb') as f:
+    #     model2.load_state_dict(torch.load(f))
+    # if cuda_device > -1:
+    #     model2.cuda(cuda_device)
 
-    # And here's how to reload the model.
-    vocab2 = Vocabulary.from_files("/tmp/vocabulary")
+    # predictor2 = SentenceTaggerPredictor(model2, dataset_reader=reader)
+    # tag_logits2 = predictor2.predict("The dog ate the apple")['tag_logits']
+    # np.testing.assert_array_almost_equal(tag_logits2, tag_logits)
 
-    model2 = BiLSTMTagger(word_embeddings, lstm, vocab2)
+    seq_iterator = BasicIterator(batch_size=64)
+    seq_iterator.index_with(vocab)
 
-    with open("/tmp/model.th", 'rb') as f:
-        model2.load_state_dict(torch.load(f))
-
-    if cuda_device > -1:
-        model2.cuda(cuda_device)
-
-    predictor2 = SentenceTaggerPredictor(model2, dataset_reader=reader)
-    tag_logits2 = predictor2.predict("The dog ate the apple")['tag_logits']
-    np.testing.assert_array_almost_equal(tag_logits2, tag_logits)
+    predictor = DisfluencyPredictor(
+        model, seq_iterator, cuda_device=-1)
+    test_preds = predictor.predict(test_dataset)
+    print(test_preds)
