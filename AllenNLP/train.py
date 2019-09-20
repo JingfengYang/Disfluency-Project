@@ -16,6 +16,7 @@ from allennlp.training.learning_rate_schedulers.noam import NoamLR
 from allennlp.data.iterators import BucketIterator, BasicIterator
 
 from allennlp.training.trainer import Trainer
+from allennlp.training.util import evaluate
 
 from BiLSTMTagger import BiLSTMTagger
 from DisfluencyDatasetReader import DisfluencyDatasetReader
@@ -32,7 +33,8 @@ if __name__ == '__main__':
     DROPOUT_RATE = 0.1
     BATCH_SIZE = 32
     INIT_LEARNING_RATE = 0.0
-    EPOCH = 1
+    EPOCH = 1000
+    WARMUP_STEPS = 5000
     PATIENCE = 10
 
     torch.manual_seed(1)
@@ -44,7 +46,7 @@ if __name__ == '__main__':
     reader = DisfluencyDatasetReader(
         token_indexers={"tokens": token_indexer})
 
-    train_dataset = reader.read('../mini_train.txt')
+    train_dataset = reader.read('../train.txt')
     validation_dataset = reader.read('../val.txt')
     test_dataset = reader.read('../test.txt')
 
@@ -82,7 +84,7 @@ if __name__ == '__main__':
     scheduler = NoamLR(
         optimizer=optimizer,
         model_size=HIDDEN_DIM,
-        warmup_steps=400,
+        warmup_steps=WARMUP_STEPS,
         factor=1)
 
     iterator = BucketIterator(batch_size=BATCH_SIZE, sorting_keys=[
@@ -102,32 +104,25 @@ if __name__ == '__main__':
 
     trainer.train()
 
-    # predictor = SentenceTaggerPredictor(model, dataset_reader=reader)
-    # tag_logits = predictor.predict("The dog ate the apple")['tag_logits']
-    # tag_ids = np.argmax(tag_logits, axis=-1)
-    # print([model.vocab.get_token_from_index(i, 'labels') for i in tag_ids])
-
     # Here's how to save the model.
-    # with open("/tmp/model.th", 'wb') as f:
-    #     torch.save(model.state_dict(), f)
-    # vocab.save_to_files("/tmp/vocabulary")
+    with open("model.th", 'wb') as f:
+        torch.save(model.state_dict(), f)
+    vocab.save_to_files("vocabulary")
 
     # # And here's how to reload the model.
-    # vocab2 = Vocabulary.from_files("/tmp/vocabulary")
+    # vocab2 = Vocabulary.from_files("vocabulary")
     # model2 = BiLSTMTagger(word_embeddings, lstm, vocab2)
-    # with open("/tmp/model.th", 'rb') as f:
+    # with open("model.th", 'rb') as f:
     #     model2.load_state_dict(torch.load(f))
     # if cuda_device > -1:
     #     model2.cuda(cuda_device)
 
-    # predictor2 = SentenceTaggerPredictor(model2, dataset_reader=reader)
-    # tag_logits2 = predictor2.predict("The dog ate the apple")['tag_logits']
-    # np.testing.assert_array_almost_equal(tag_logits2, tag_logits)
-
-    seq_iterator = BasicIterator(batch_size=64)
+    seq_iterator = BasicIterator(batch_size=32)
     seq_iterator.index_with(vocab)
 
-    predictor = DisfluencyPredictor(
-        model, seq_iterator, cuda_device=-1)
-    test_preds = predictor.predict(test_dataset)
-    print(test_preds)
+    metrics = evaluate(model=model,
+                       instances=test_dataset,
+                       data_iterator=seq_iterator,
+                       cuda_device=cuda_device,
+                       batch_weight_key=None)
+    print("Test accuracy: ", metrics)

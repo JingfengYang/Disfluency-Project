@@ -36,4 +36,6 @@ class DisfluencyPredictor:
             for batch in pred_generator_tqdm:
                 batch = move_to_device(batch, self.cuda_device)
                 preds.append(self._extract_data(batch))
+        print(preds)
+        print(preds.shape)
         return np.concatenate(preds, axis=0)
