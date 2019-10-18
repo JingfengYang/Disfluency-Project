@@ -36,15 +36,19 @@ if __name__ == '__main__':
     EPOCH = 1000
     WARMUP_STEPS = 5000
     PATIENCE = 10
+    BERT = False
 
     torch.manual_seed(1)
 
-    token_indexer = PretrainedBertIndexer(
-        pretrained_model="bert-base-uncased",
-        do_lowercase=True
-    )
-    reader = DisfluencyDatasetReader(
-        token_indexers={"tokens": token_indexer})
+    if BERT:
+        token_indexer = PretrainedBertIndexer(
+            pretrained_model="bert-base-uncased",
+            do_lowercase=True
+        )
+        reader = DisfluencyDatasetReader(
+            token_indexers={"tokens": token_indexer})
+    else:
+        reader = DisfluencyDatasetReader()
 
     train_dataset = reader.read('../train.txt')
     validation_dataset = reader.read('../val.txt')
@@ -53,15 +57,20 @@ if __name__ == '__main__':
     vocab = Vocabulary.from_instances(
         train_dataset + validation_dataset + test_dataset)
 
-    token_embedding = Embedding(num_embeddings=vocab.get_vocab_size('tokens'),
-                                embedding_dim=WORD_EMBEDDING_DIM)
-    bert_embedder = PretrainedBertEmbedder(
-        pretrained_model="bert-base-uncased",
-        requires_grad=False,
-        top_layer_only=True
-    )
-    word_embeddings = BasicTextFieldEmbedder({"tokens": bert_embedder},
-                                             allow_unmatched_keys=True)
+    if BERT:
+        bert_embedder = PretrainedBertEmbedder(
+            pretrained_model="bert-base-uncased",
+            requires_grad=False,
+            top_layer_only=True
+        )
+        word_embeddings = BasicTextFieldEmbedder({"tokens": bert_embedder},
+                                                 allow_unmatched_keys=True)
+    else:
+
+        token_embedding = Embedding(
+            num_embeddings=vocab.get_vocab_size('tokens'),
+            embedding_dim=WORD_EMBEDDING_DIM)
+        word_embeddings = BasicTextFieldEmbedder({"tokens": token_embedding})
 
     lstm = PytorchSeq2SeqWrapper(nn.LSTM(
         INPUT_DIM, HIDDEN_DIM,
