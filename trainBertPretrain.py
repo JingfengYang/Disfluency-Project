@@ -1,5 +1,5 @@
-from utilsBertAtt import build_vocab,batchIter,idData,isEdit
-from preprocessPTB import readData,preProcess
+from utilsBertPretrain import build_vocab,batchIter,idData,isEdit,readFile
+from preprocessPTBIO import readData,preProcess
 import torch
 import torch.nn as nn
 import time
@@ -8,7 +8,6 @@ import torch.nn.functional as F
 from transformers import BertModel
 from transformers import BertTokenizer
 from transformers import AdamW, WarmupLinearSchedule
-import torch.nn.utils.rnn as rnn_utils
 
 WORD_EMBEDDING_DIM = 64
 INPUT_DIM = 100
@@ -20,6 +19,7 @@ DROUPOUT_RATE=0.1
 BATCH_SIZE=32
 INIT_LEARNING_RATE=0.00005
 EPOCH=30
+PRETRAIN_EPOCH=50
 WARM_UP_STEPS=0
 ADAM_EPSILON=1e-8
 
@@ -52,7 +52,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 class Encoder(nn.Module):
     #def __init__(self,word_size,word_dim,input_dim,hidden_dim,nLayers,labelSize,dropout_p):
-    def __init__(self, hidden_dim,nLayers,labelSize,dropout_p):
+    def __init__(self, labelSize):
 
         super(Encoder, self).__init__()
         '''self.nLayers=nLayers
@@ -69,23 +69,11 @@ class Encoder(nn.Module):
 
         self.dropout1 = nn.Dropout(dropout_p)
         self.dropout2 = nn.Dropout(dropout_p)'''
-
-        self.nLayers = nLayers
-        self.hidden_dim = hidden_dim
         self.bert = BertModel.from_pretrained('bert-base-uncased')
-        self.embeds2input = nn.Linear(768, hidden_dim)
-        self.tanh1 = nn.ReLU()
-        #self.lstm = nn.LSTM(input_dim, hidden_dim, num_layers=self.nLayers, bidirectional=True)
-        self.att=nn.Linear(hidden_dim, hidden_dim,bias=False)
-        self.hidden2output1 = nn.Linear(hidden_dim*3, hidden_dim)
-        self.tanh2 = nn.ReLU()
-        self.hidden2output2 = nn.Linear(hidden_dim, labelSize)
-        self.dropout1 = nn.Dropout(dropout_p)
-        self.dropout2 = nn.Dropout(dropout_p)
+        self.fc = nn.Linear(768, labelSize)
 
 
-
-    def forward(self,input,masks,tag_masks, train=True,hidden=None):
+    def forward(self,input,lengths, train=True,hidden=None):
         '''input=self.tanh1(self.embeds2input(self.word_embeds(input)))
         if train:
             input=self.dropout1(input)
@@ -98,42 +86,10 @@ class Encoder(nn.Module):
         output=output.transpose(0,1)
         output=self.hidden2output2(self.tanh2(self.hidden2output1(output)))
         output=F.log_softmax(output, dim=-1)'''
-        #print(masks)
         encoded_layers, _ = self.bert(input)
-        enc =  [layer[starts.nonzero().squeeze(1)]
-                   for layer, starts in zip(encoded_layers,masks)]
-        test=[m.nonzero().size()[0] for m in masks]
-
-        #lengths2=[a.size(0) for a in enc]
-        #assert(lengths.tolist()==lengths2)
-        enc=rnn_utils.pad_sequence(enc, batch_first=True, padding_value=0.0)
-
-        input=self.tanh1(self.embeds2input(enc))
-
-        if train:
-            input = self.dropout1(input)
-        '''input = input.transpose(0, 1)
-        input = nn.utils.rnn.pack_padded_sequence(input, lengths)
-        output, hidden = self.lstm(input, hidden)
-        output, _ = nn.utils.rnn.pad_packed_sequence(output)
-        output = output.transpose(0, 1)'''
-
-        intermediate=self.att(input)
-
-        scores=torch.matmul(intermediate,input.transpose(1,2))
-        scores.masked_fill_(tag_masks.unsqueeze(1)==0,-10000.0)
-
-        m2=(scores.max(2,keepdim=True)[0]==scores)
-        softScores=scores.masked_fill(m2,1.0)
-        softScores.masked_fill_(~m2,0.0)
-        output=torch.cat((input,torch.matmul(F.softmax(scores,dim=2),input),torch.matmul(softScores,input)),dim=2)
-
-        if train:
-            output = self.dropout2(output)
-
-        output = self.hidden2output2(self.tanh2(self.hidden2output1(output)))
+        enc = encoded_layers##[-1]##
+        output = self.fc(enc)
         output = F.log_softmax(output, dim=-1)
-
         return output
 
 
@@ -145,10 +101,9 @@ class SimpleLossCompute:
         self.opt = opt
         self.scheduler=scheduler
 
-    def __call__(self, x, y, mask,norm,train=True):
+    def __call__(self, x, y, norm,train=True):
         loss = self.criterion(x.contiguous().view(-1, x.size(-1)),
                               y.contiguous().view(-1)) / norm
-
         if train:
             loss.backward()
             if self.opt is not None:
@@ -205,12 +160,10 @@ def run_epoch(data_iter, model, loss_compute,train=True,id2label=None):
     editTrueTotal = 0
     editPredTotal = 0
     editCorrectTotal = 0
-    for i, (sent_batch,tag_batch,head_batch,tag_mask_batch) in enumerate(data_iter):##
+    for i, (sent_batch,tag_batch) in enumerate(data_iter):##
         #print(tag_batch[0])
-
-        masks=tag_mask_batch[0].bool()
-        out = model(sent_batch[0], head_batch[0], tag_mask_batch[0],train=train)
-        loss = loss_compute(out, tag_batch[0], masks, sent_batch[2],train=train)
+        out = model(sent_batch[0], sent_batch[1],train=train)
+        loss = loss_compute(out, tag_batch[0], sent_batch[2],train=train)
         #hprint('batch_loss',loss)
         total_loss += loss
         total_tokens += sent_batch[2]
@@ -224,23 +177,22 @@ def run_epoch(data_iter, model, loss_compute,train=True,id2label=None):
             tokens = 0
         if not train:
             pad=out.size(-1)
+            #print('padid:',pad)
             _, results = torch.max(out.contiguous().view(-1, out.size(-1)), 1)
             results = results.detach().tolist()
             y = tag_batch[0].contiguous().view(-1).detach().tolist()
-            length=tag_mask_batch[1].contiguous().detach().tolist()
             #print('results:',results,y)
-            for pred, gold in zip(results, y):
-                if not gold == pad:
-                    if isEdit(pred, id2label) and isEdit(gold, id2label):
-                        editCorrectTotal += 1
-                        editTrueTotal += 1
-                        editPredTotal += 1
+            for pred,gold in zip(results,y):
+                if not gold==pad:
+                    if isEdit(pred,id2label) and isEdit(gold,id2label):
+                        editCorrectTotal+=1
+                        editTrueTotal+=1
+                        editPredTotal+=1
                     else:
-                        if isEdit(pred, id2label):
+                        if isEdit(pred,id2label):
                             editPredTotal += 1
-                        if isEdit(gold, id2label):
-                            editTrueTotal += 1
-
+                        if isEdit(gold,id2label):
+                            editTrueTotal +=1
     f=0.0
     if not train:
         if not editPredTotal:
@@ -284,16 +236,28 @@ class NoamOpt:
                (self.model_size ** (-0.5) *
                 min(step ** (-0.5), step * self.warmup ** (-1.5)))
 
-def run(epoch,model,batch_size,trainData,valData,testData,id2label,w_padding):
+def run(epoch,pretrain_epoch,model,batch_size,pretrainData,trainData,valData,testData,id2label,w_padding):
     valResult=[]
     testResult=[]
-    #LabelSmoothing(size=len(id2label), padding_idx=len(id2label), smoothing=0.0)
-    t_total=(len(trainData[0])//BATCH_SIZE+1)*EPOCH
     criterion = LabelSmoothing(size=len(id2label), padding_idx=len(id2label), smoothing=0.0)
+    t_total=(len(trainData[0])//BATCH_SIZE+1)*EPOCH
     optimizer = AdamW(model.parameters(), lr=INIT_LEARNING_RATE, eps=ADAM_EPSILON)
     scheduler = WarmupLinearSchedule(optimizer, warmup_steps=WARM_UP_STEPS, t_total=t_total)
     #model_opt = NoamOpt(HIDDEN_DIM, 1, WARM_UP_STEPS,
                         #torch.optim.Adam(model.parameters(), lr=INIT_LEARNING_RATE,betas=(0.9, 0.98), eps=1e-9))
+    for i in range(pretrain_epoch):
+        model.train()
+        run_epoch(batchIter(pretrainData,batch_size,w_tag_pad=w_padding,t_tag_pad=len(id2label)), model,
+                  SimpleLossCompute( criterion, optimizer,scheduler),train=True)
+        model.eval()
+        print('Evaluation_val: pre epoch: %d' % (i))
+        loss,f=run_epoch(batchIter(valData, batch_size, w_tag_pad=w_padding,t_tag_pad=len(id2label)), model,
+                  SimpleLossCompute(criterion, optimizer,scheduler), train=False, id2label=id2label)
+        print('Loss:', loss)
+        print('Evaluation_test: pre epoch: %d' % (i))
+        loss,f=run_epoch(batchIter(testData, batch_size, w_tag_pad=w_padding,t_tag_pad=len(id2label)), model,
+                                           SimpleLossCompute(criterion,  optimizer,scheduler), train=False, id2label=id2label)
+        print('Loss:', loss)
     for i in range(epoch):
         model.train()
         run_epoch(batchIter(trainData,batch_size,w_tag_pad=w_padding,t_tag_pad=len(id2label)), model,
@@ -314,16 +278,17 @@ def run(epoch,model,batch_size,trainData,valData,testData,id2label,w_padding):
     testBest = max(testResult)
     print('TestBest epoch:', [i for i, j in enumerate(testResult) if j == testBest])
 
-
 trainSents=preProcess(readData('dps/swbd/train'))
 valSents=preProcess(readData('dps/swbd/val'))
 testSents=preProcess(readData('dps/swbd/test'))
+pretrainSents=readFile('fakeData.txt')
 label2id,id2label=build_vocab(trainSents)
-print(id2label)
+
 tokenizer = BertTokenizer.from_pretrained('bert-base-uncased', do_lower_case=False)
+pretrainData=idData(tokenizer,trainSents,label2id)
 trainData=idData(tokenizer,trainSents,label2id)
 valData=idData(tokenizer,valSents,label2id)
 testData=idData(tokenizer,testSents,label2id)
-encoder=Encoder(HIDDEN_DIM,ENCODER_LAYER,len(id2label),DROUPOUT_RATE).to(device)
+encoder=Encoder(len(id2label)).to(device)
 
-run(EPOCH,encoder,BATCH_SIZE,trainData,valData,testData,id2label,tokenizer._convert_token_to_id('[PAD]'))
+run(EPOCH,PRETRAIN_EPOCH,encoder,BATCH_SIZE,pretrainData,trainData,valData,testData,id2label,tokenizer._convert_token_to_id('[PAD]'))
