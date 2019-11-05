@@ -24,8 +24,14 @@ def tokenize_id_pad_mask_data(tokenizer, file, tagDic, max_len=128):
     for line in content:
         lines.append(line)
         if line == "":
+            if len(lines) != 4:
+                lines = []
+                continue
             # Line 1 is words
             words = lines[0].split()
+            if len(words) <= 3:
+                lines = []
+                continue
             # Line 2 is POS tags Throw POS tags
             # Line 3 is disfluent tags
             tags = lines[2].split()
@@ -36,6 +42,8 @@ def tokenize_id_pad_mask_data(tokenizer, file, tagDic, max_len=128):
             sentence_with_tag.append([words, tag])
             lines = []
     # sentence_with_tag.sort(key=lambda x: len(x[0]), reverse=True)
+    rawSents = [" ".join(sent[0]) for sent in sentence_with_tag]
+    print("Collected {} valid sentences".format(len(rawSents)))
     print("Tokenizing and Converting to ID")
     for words, tag in sentence_with_tag:
         words = ["[CLS]"] + words + ["[SEP]"]
@@ -60,14 +68,17 @@ def tokenize_id_pad_mask_data(tokenizer, file, tagDic, max_len=128):
         else:
             padSents.append(sent + [padToken] * (max_len - len(sent)))
             masks.append([1] * len(sent) + [0] * (max_len - len(sent)))
-    return [padSents, masks, allTags]
+    return [padSents, masks, allTags], rawSents
 
 
-def getDataLoader(data, batch_size=12):
+def getDataLoader(data, sampler="random", batch_size=2):
     inputs, masks, labels = torch.tensor(data[0]), \
         torch.tensor(data[1]), torch.tensor(data[2])
     data = TensorDataset(inputs, masks, labels)
-    sampler = RandomSampler(data)
+    if sampler == "sequential":
+        sampler = SequentialSampler(data)
+    else:
+        sampler = RandomSampler(data)
     dataloader = DataLoader(
         data, sampler=sampler, batch_size=batch_size)
     return dataloader
@@ -80,6 +91,32 @@ def flat_accuracy(preds, labels):
 
 
 def test(dataloader, model):
+    # Put model in evaluation mode to evaluate loss on the validation set
+    model.eval()
+
+    all_labels = []
+
+    # Evaluate data for one epoch
+    for batch in dataloader:
+        # Add batch to GPU
+        batch = tuple(t.to(device) for t in batch)
+        # Unpack the inputs from our dataloader
+        b_input_ids, b_input_mask, b_labels = batch
+        # Telling the model not to compute or store gradients,
+        # saving memory and speeding up validation
+        with torch.no_grad():
+            # Forward pass, calculate logit predictions
+            logits = model(b_input_ids, token_type_ids=None,
+                           attention_mask=b_input_mask)
+        # Move logits and labels to CPU
+        logits = logits[0].detach().cpu().numpy()
+        pred_flat = np.argmax(logits, axis=1).flatten()
+        all_labels.extend(list(pred_flat))
+
+    return all_labels
+
+
+def evaluate(dataloader, model):
     # Put model in evaluation mode to evaluate loss on the validation set
     model.eval()
 
@@ -110,53 +147,6 @@ def test(dataloader, model):
     print("Accuracy: {}".format(eval_accuracy / nb_eval_steps))
 
 
-def runner(train_dataloader, validation_dataloader, model, optimizer,
-           scheduler, device, epochs=3):
-    # Store our loss and accuracy for plotting
-    train_loss_set = []
-
-    # trange is a tqdm wrapper around the normal python range
-    for _ in trange(epochs, desc="Epoch"):
-
-        # Training
-        # Set our model to training mode (as opposed to evaluation mode)
-        model.train()
-
-        # Tracking variables
-        tr_loss = 0
-        nb_tr_examples, nb_tr_steps = 0, 0
-
-        # Train the data for one epoch
-        for step, batch in enumerate(train_dataloader):
-            # Add batch to GPU
-            batch = tuple(t.to(device) for t in batch)
-            # Unpack the inputs from our dataloader
-            b_input_ids, b_input_mask, b_labels = batch
-            # Clear out the gradients (by default they accumulate)
-            optimizer.zero_grad()
-            # Forward pass
-            outputs = model(b_input_ids, token_type_ids=None,
-                            attention_mask=b_input_mask, labels=b_labels)
-            loss, logits = outputs[:2]
-            train_loss_set.append(loss.item())
-            # Backward pass
-            loss.backward()
-            torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
-            # Update parameters and take a step using the computed gradient
-            optimizer.step()
-            scheduler.step()
-
-            # Update tracking variables
-            tr_loss += loss.item()
-            nb_tr_examples += b_input_ids.size(0)
-            nb_tr_steps += 1
-
-        print("Train loss: {}".format(tr_loss / nb_tr_steps))
-
-        # Validation
-        test(validation_dataloader, model)
-
-
 if __name__ == '__main__':
     # Specify the CPU/GPU as the device
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -168,56 +158,42 @@ if __name__ == '__main__':
         label2id[label] = i
 
     print("Loading BERT Tokenizer")
-    tokenizer = BertTokenizer.from_pretrained(
-        'bert-base-uncased', do_lower_case=True)
-    print("Loading Train Data")
-    trainData = tokenize_id_pad_mask_data(tokenizer, 'train.txt', label2id)
-    print("Loading Validation Data")
-    valData = tokenize_id_pad_mask_data(tokenizer, 'val.txt', label2id)
-    trainData = valData
-    print("Loading Test Data")
-    testData = tokenize_id_pad_mask_data(tokenizer, 'test.txt', label2id)
-
-    trainDataLoader = getDataLoader(trainData)
-    valDataLoader = getDataLoader(valData)
-    testDataLoader = getDataLoader(testData)
+    # tokenizer = BertTokenizer.from_pretrained(
+    #     'bert-base-uncased', do_lower_case=True)
+    tokenizer = BertTokenizer.from_pretrained('./tokenizer/')
 
     print("Loading BERT model.")
-    model = BertForSequenceClassification.from_pretrained(
-        "bert-base-uncased", num_labels=2)
+    # model = BertForSequenceClassification.from_pretrained(
+    #     "bert-base-uncased", num_labels=2)
+    model = BertForSequenceClassification.from_pretrained('./model/')
     model.cuda()
 
-    print("Creating optimizer with model parameters.")
-    param_optimizer = list(model.named_parameters())
-    no_decay = ['bias', 'gamma', 'beta']
-    optimizer_grouped_parameters = [
-        {'params': [p for n, p in param_optimizer if
-                    not any(nd in n for nd in no_decay)],
-            'weight_decay_rate': 0.01},
-        {'params': [p for n, p in param_optimizer if
-                    any(nd in n for nd in no_decay)],
-            'weight_decay_rate': 0.0}
-    ]
-    # This variable contains all of the hyperparemeter
-    # information our training loop needs
-    optimizer = AdamW(optimizer_grouped_parameters,
-                      lr=2e-5,
-                      correct_bias=False)
+    print("Loading Test Data")
+    testData, rawSents = tokenize_id_pad_mask_data(
+        tokenizer, 'skysports_extracted.txt', label2id)
+    testDataLoader = getDataLoader(testData, sampler="sequential")
+    labels = test(testDataLoader, model)
 
-    num_total_steps = 1000
-    num_warmup_steps = 100
-    scheduler = WarmupLinearSchedule(
-        optimizer, warmup_steps=num_warmup_steps, t_total=num_total_steps)
+    # Evaluate on Val and Test
+    # print("Loading Validation Data")
+    # valData, _ = tokenize_id_pad_mask_data(tokenizer, 'val.txt', label2id)
+    # trainData = valData
+    # print("Loading Test Data")
+    # testData, _ = tokenize_id_pad_mask_data(tokenizer, 'test.txt', label2id)
+    # valDataLoader = getDataLoader(valData)
+    # testDataLoader = getDataLoader(testData)
+    # evaluate(valDataLoader, model)
+    # evaluate(testDataLoader, model)
 
-    print("Starting Training")
-    # Number of training epochs (authors recommend between 2 and 4)
-    runner(trainDataLoader, valDataLoader, model, optimizer, scheduler,
-           device, epochs=4)
-    test(testDataLoader, model)
+    disfluent = []
+    with open('predictions.txt', 'w+') as f:
+        for tag, sent in zip(labels, rawSents):
+            f.write(sent + '\n')
+            f.write(id2label[tag] + '\n')
+            f.write('\n')
+            if tag == 0:
+                disfluent.append(sent)
 
-    if not os.path.exists('./model/'):
-        os.makedirs('./model/')
-    model.save_pretrained('./model/')
-    if not os.path.exists('./tokenizer/'):
-        os.makedirs('./tokenizer/')
-    tokenizer.save_pretrained('./tokenizer/')
+    with open('disfluent.txt', 'w+') as f:
+        for i in range(len(disfluent)):
+            f.write("{}\n".format(disfluent[i]))

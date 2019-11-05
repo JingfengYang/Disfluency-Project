@@ -7,3 +7,9 @@ train.txt
 test.txt
 val.txt
 dps/readme.dps
+PyTorchClassifier/model
+PyTorchClassifier/tokenizer
+PyTorchClassifier/disfluent.txt
+PyTorchClassifier/predictions.txt
+PyTorchClassifier/skysports_extracted.txt
+

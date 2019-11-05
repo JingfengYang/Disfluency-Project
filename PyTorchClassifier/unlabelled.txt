@@ -1,0 +1,36 @@
+or	are	you	did	you	go	directly	from	high	school	into	into	college
+CC	VBP	PRP	VBD	PRP	VB	RB	IN	JJ	NN	IN	IN	NN
+O	BE	IP	OR	OR	O	O	O	O	O	BE_IP	OR	O
+
+have	you	been	out	working	and	then	gone	back	to	school
+VBP	PRP	VBN	RB	VBG	CC	RB	VBN	RB	IN	NN
+O	O	O	O	O	O	O	O	O	O	O
+
+and	on	a	a	scale	i	guess	it	's	still	considered	small
+CC	IN	DT	DT	NN	PRP	VBP	PRP	BES	RB	VBN	JJ
+O	O	BE_IP	OR	O	O	O	O	O	O	O	O
+
+and	you	go	oh	my	gosh	where	did	it	all	go
+CC	PRP	VBP	UH	PRP$	UH	WRB	VBD	PRP	DT	VB
+O	O	O	O	O	O	O	O	O	O	O
+
+and	i	i	work	as	a	co-op	at	uh	georgia	tech	research	institute
+CC	PRP	PRP	VBP	IN	DT	NN	IN	UH	NNP	NNP	NNP	NNP
+O	BE_IP	OR	OR	O	O	O	O	O	O	O	O	O
+
+um	congress	has	added	too	towards	the	members	bank	there	you	know
+UH	NNP	VBZ	VBN	RB	IN	DT	NNPS	NNP	RB	PRP	VBP
+O	O	O	O	O	O	O	O	O	O	O	O
+
+so	uh	i	'm	i	have	n't	made	use	of	that
+UH	UH	PRP	VBP	PRP	VBP	RB	VBN	NN	IN	DT
+O	O	BE	IP	OR	O	O	O	O	O	O
+
+there	's	a	different	one	for	applied	physics
+EX	BES	DT	JJ	NN	IN	JJ	NNS
+O	O	O	O	O	O	O	O
+
+i	think	i	think	we	're	going	to	talk	about	parents	spending	time	with	their	children
+PRP	VBP	PRP	VBP	PRP	VBP	VBG	TO	VB	IN	NNS	VBG	NN	IN	PRP$	NNS
+BE	IP	OR	OR	OR	OR	O	O	O	O	O	O	O	O	O	O
+
